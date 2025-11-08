@@ -1,0 +1,479 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>汉字小游戏</title>
+  <!-- Tailwind CSS v3 -->
+  <script src="https://cdn.tailwindcss.com"></script>
+  <!-- Font Awesome -->
+  <link href="https://cdn.jsdelivr.net/npm/font-awesome@4.7.0/css/font-awesome.min.css" rel="stylesheet">
+  
+  <script>
+    tailwind.config = {
+      theme: {
+        extend: {
+          colors: {
+            primary: '#FF6B8B',
+            secondary: '#FF8FA3',
+            accent: '#FFB3C1',
+            background: '#E3F2FD',
+            cellBackground: '#FFF8E1',
+            success: '#4CAF50',
+            error: '#FF4444',
+            text: '#333333'
+          },
+          fontFamily: {
+            sans: ['Arial', 'sans-serif'],
+          },
+
+        }
+      }
+    }
+  </script>
+  <style type="text/tailwindcss">
+    @keyframes flip {
+      0% { transform: rotateY(0deg); }
+      100% { transform: rotateY(180deg); opacity: 0; }
+    }
+    
+    @keyframes shake {
+      0%, 100% { transform: translateX(0); }
+      10%, 30%, 50%, 70%, 90% { transform: translateX(-5px); }
+      20%, 40%, 60%, 80% { transform: translateX(5px); }
+    }
+    
+    .game-container {
+      perspective: 1000px;
+    }
+    
+    .cell {
+      transition: all 0.3s ease;
+      transform-style: preserve-3d;
+    }
+    
+    .cell-flip {
+      animation: flip 0.6s ease-out forwards;
+    }
+    
+    .cell-shake {
+      animation: shake 0.5s ease-in-out;
+    }
+  </style>
+</head>
+<body class="bg-background min-h-screen flex flex-col items-center justify-center p-4">
+  <div class="w-full max-w-md mx-auto">
+    <header class="text-center mb-6">
+      <h1 class="text-3xl font-bold text-primary mb-2">网页小游戏示例</h1>
+      <div class="flex justify-between items-center text-sm text-gray-600">
+        <div class="flex items-center">
+          <i class="fa fa-clock-o mr-1"></i>
+          <span id="timer">00:00</span>
+        </div>
+        <div class="flex items-center">
+          <i class="fa fa-refresh mr-1"></i>
+          <span id="moves">0</span>
+        </div>
+      </div>
+    </header>
+
+    <div class="game-container bg-white rounded-xl shadow-lg p-4 mb-6">
+      <div id="game-board" class="grid grid-cols-6 gap-2">
+        <!-- 游戏方格将通过JavaScript动态生成 -->
+      </div>
+    </div>
+
+    <div class="flex justify-center">
+      <button id="start-button" class="bg-primary hover:bg-secondary text-white font-bold py-3 px-8 rounded-full shadow-lg transition-all duration-300 transform hover:scale-105 flex items-center">
+        <i class="fa fa-play mr-2"></i> 开始游戏
+      </button>
+    </div>
+
+    <div id="success-modal" class="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 hidden">
+      <div class="bg-white rounded-xl p-8 max-w-md w-full mx-4 text-center">
+        <div class="text-6xl text-success mb-4">
+          <i class="fa fa-check-circle"></i>
+        </div>
+        <h2 class="text-2xl font-bold mb-2">恭喜你！</h2>
+        <p class="mb-6">你成功完成了所有词语配对！</p>
+        <div class="flex justify-between mb-6 text-lg">
+          <div>
+            <span class="font-bold">用时：</span>
+            <span id="final-time">00:00</span>
+          </div>
+          <div>
+            <span class="font-bold">步数：</span>
+            <span id="final-moves">0</span>
+          </div>
+        </div>
+        <button id="play-again-button" class="bg-primary hover:bg-secondary text-white font-bold py-2 px-6 rounded-full shadow transition-all duration-300 transform hover:scale-105">
+          再玩一次
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    // 创建音频上下文
+    let audioContext;
+    
+    // 初始化音频上下文
+    function initAudio() {
+      try {
+        // 创建音频上下文
+        audioContext = new (window.AudioContext || window.webkitAudioContext)();
+      } catch(e) {
+        console.warn('Web Audio API is not supported in this browser');
+      }
+    }
+    
+    // 播放成功音效
+    function playSuccessSound() {
+      if (!audioContext) return;
+      
+      try {
+        // 创建第一个音调
+        const oscillator1 = audioContext.createOscillator();
+        const gainNode1 = audioContext.createGain();
+        
+        oscillator1.connect(gainNode1);
+        gainNode1.connect(audioContext.destination);
+        
+        // 使用更柔和的音色
+        oscillator1.type = 'triangle';
+        // 较低的起始频率
+        oscillator1.frequency.setValueAtTime(330, audioContext.currentTime); // E4
+        // 平滑上升到较高频率
+        oscillator1.frequency.linearRampToValueAtTime(440, audioContext.currentTime + 0.2); // A4
+        
+        // 更平滑的音量包络
+        gainNode1.gain.setValueAtTime(0, audioContext.currentTime);
+        gainNode1.gain.linearRampToValueAtTime(0.08, audioContext.currentTime + 0.1);
+        gainNode1.gain.linearRampToValueAtTime(0, audioContext.currentTime + 0.5);
+        
+        oscillator1.start();
+        oscillator1.stop(audioContext.currentTime + 0.5);
+        
+        // 添加和声
+        setTimeout(() => {
+          const oscillator2 = audioContext.createOscillator();
+          const gainNode2 = audioContext.createGain();
+          
+          oscillator2.connect(gainNode2);
+          gainNode2.connect(audioContext.destination);
+          
+          oscillator2.type = 'triangle';
+          // 和声频率（比第一个音调高五度）
+          oscillator2.frequency.setValueAtTime(494, audioContext.currentTime); // B4
+          oscillator2.frequency.linearRampToValueAtTime(659, audioContext.currentTime + 0.2); // E5
+          
+          gainNode2.gain.setValueAtTime(0, audioContext.currentTime);
+          gainNode2.gain.linearRampToValueAtTime(0.06, audioContext.currentTime + 0.1);
+          gainNode2.gain.linearRampToValueAtTime(0, audioContext.currentTime + 0.5);
+          
+          oscillator2.start();
+          oscillator2.stop(audioContext.currentTime + 0.5);
+        }, 150);
+        
+        // 添加低音增强
+        setTimeout(() => {
+          const oscillator3 = audioContext.createOscillator();
+          const gainNode3 = audioContext.createGain();
+          
+          oscillator3.connect(gainNode3);
+          gainNode3.connect(audioContext.destination);
+          
+          oscillator3.type = 'sine';
+          // 低音频率
+          oscillator3.frequency.setValueAtTime(165, audioContext.currentTime); // E3
+          
+          gainNode3.gain.setValueAtTime(0, audioContext.currentTime);
+          gainNode3.gain.linearRampToValueAtTime(0.05, audioContext.currentTime + 0.1);
+          gainNode3.gain.linearRampToValueAtTime(0, audioContext.currentTime + 0.3);
+          
+          oscillator3.start();
+          oscillator3.stop(audioContext.currentTime + 0.3);
+        }, 50);
+      } catch(e) {
+        console.error('Error playing success sound:', e);
+      }
+    }
+    
+    // 所有可选的2字词语
+    const allWords = [
+      "蓝天", "白云", "天空", "高山", "森林", "老师", 
+      "父母", "家庭", "电话", "水杯", "钥匙", "睡觉", 
+      "吃饭", "窗户", "驾驶", "漂亮", "可爱", "工具", 
+      "汉语", "娱乐", "音乐", "游戏", "中医", "武侠", 
+      "编程", "灵感", "迷信", "科学", "落叶", "石头", 
+      "冬天", "闪电", "太阳", "颜色", "耳朵", "嘴巴", "知识"
+    ];
+
+    // 游戏状态
+    let gameState = {
+      selectedWords: [], // 随机选择的18个词语
+      board: [], // 游戏板上的汉字
+      wordPositions: {}, // 每个词语的位置
+      firstClick: null, // 第一次点击的位置
+      secondClick: null, // 第二次点击的位置
+      isProcessing: false, // 是否正在处理点击
+      matchedPairs: 0, // 已匹配的词语对数
+      totalPairs: 9, // 总词语对数
+      moves: 0, // 步数
+      gameStarted: false, // 游戏是否开始
+      startTime: null, // 游戏开始时间
+      timerInterval: null // 计时器
+    };
+
+    // DOM元素
+    const gameBoard = document.getElementById('game-board');
+    const startButton = document.getElementById('start-button');
+    const timerElement = document.getElementById('timer');
+    const movesElement = document.getElementById('moves');
+    const successModal = document.getElementById('success-modal');
+    const finalTimeElement = document.getElementById('final-time');
+    const finalMovesElement = document.getElementById('final-moves');
+    const playAgainButton = document.getElementById('play-again-button');
+
+    // 初始化游戏
+    function initGame() {
+      resetGameState();
+      selectRandomWords();
+      createGameBoard();
+      updateUI();
+    }
+
+    // 重置游戏状态
+    function resetGameState() {
+      gameState.selectedWords = [];
+      gameState.board = [];
+      gameState.wordPositions = {};
+      gameState.firstClick = null;
+      gameState.secondClick = null;
+      gameState.isProcessing = false;
+      gameState.matchedPairs = 0;
+      gameState.moves = 0;
+      gameState.gameStarted = false;
+      gameState.startTime = null;
+      
+      // 清除计时器
+      if (gameState.timerInterval) {
+        clearInterval(gameState.timerInterval);
+        gameState.timerInterval = null;
+      }
+      
+      // 重置UI
+      timerElement.textContent = '00:00';
+      movesElement.textContent = '0';
+      successModal.classList.add('hidden');
+    }
+
+    // 随机选择18个词语
+    function selectRandomWords() {
+      // 从所有词语中随机选择18个
+      const shuffledWords = [...allWords].sort(() => 0.5 - Math.random());
+      gameState.selectedWords = shuffledWords.slice(0, 18);
+      
+      // 记录每个词语的位置
+      gameState.selectedWords.forEach((word, index) => {
+        if (!gameState.wordPositions[word]) {
+          gameState.wordPositions[word] = [];
+        }
+        gameState.wordPositions[word].push(index);
+      });
+    }
+
+    // 创建游戏板
+    function createGameBoard() {
+      gameBoard.innerHTML = '';
+      gameState.board = [];
+      
+      // 将选择的词语拆分为单个汉字
+      gameState.selectedWords.forEach(word => {
+        gameState.board.push(word[0]); // 第一个汉字
+        gameState.board.push(word[1]); // 第二个汉字
+      });
+      
+      // 打乱汉字顺序
+      gameState.board = gameState.board.sort(() => 0.5 - Math.random());
+      
+      // 创建方格
+      gameState.board.forEach((char, index) => {
+        const cell = document.createElement('div');
+        cell.className = 'cell bg-cellBackground text-text rounded-lg aspect-square flex items-center justify-center text-xl font-bold cursor-pointer shadow-sm hover:bg-secondary transition-all duration-300';
+        cell.dataset.index = index;
+        cell.textContent = char;
+        cell.addEventListener('click', () => handleCellClick(index));
+        gameBoard.appendChild(cell);
+      });
+    }
+
+    // 处理方格点击
+    function handleCellClick(index) {
+      // 如果游戏未开始，不处理点击
+      if (!gameState.gameStarted) return;
+      
+      // 如果正在处理点击，不处理新的点击
+      if (gameState.isProcessing) return;
+      
+      // 如果点击的是已经匹配的方格，不处理
+      const cell = getCellElement(index);
+      if (cell.classList.contains('opacity-0')) return;
+      
+      // 如果点击的是已经选中的方格，不处理
+      if (gameState.firstClick === index) return;
+      
+      // 如果是第一次点击
+      if (gameState.firstClick === null) {
+        gameState.firstClick = index;
+        cell.classList.add('bg-secondary');
+      } 
+      // 如果是第二次点击
+      else {
+        gameState.secondClick = index;
+        gameState.isProcessing = true;
+        gameState.moves++;
+        movesElement.textContent = gameState.moves;
+        
+        cell.classList.add('bg-secondary');
+        
+        // 检查是否匹配
+        setTimeout(() => {
+          checkMatch();
+        }, 100);
+      }
+    }
+
+    // 检查两个点击的汉字是否匹配
+    function checkMatch() {
+      const firstCell = getCellElement(gameState.firstClick);
+      const secondCell = getCellElement(gameState.secondClick);
+      const firstChar = gameState.board[gameState.firstClick];
+      const secondChar = gameState.board[gameState.secondClick];
+      
+      // 组合成词语
+      const word1 = firstChar + secondChar;
+      const word2 = secondChar + firstChar;
+      
+      // 检查是否是有效的词语
+      if (gameState.selectedWords.includes(word1) || gameState.selectedWords.includes(word2)) {
+        // 匹配成功
+        setTimeout(() => {
+          // 播放成功音效
+          playSuccessSound();
+          
+          // 添加翻转消失动画
+          firstCell.classList.add('cell-flip');
+          secondCell.classList.add('cell-flip');
+          
+          setTimeout(() => {
+            gameState.matchedPairs++;
+            
+            // 检查游戏是否结束
+            if (gameState.matchedPairs === gameState.totalPairs) {
+              endGame();
+            }
+            
+            // 重置点击状态
+            resetClicks();
+          }, 400);
+        }, 200);
+      } else {
+        // 匹配失败
+        setTimeout(() => {
+          // 添加抖动动画
+          firstCell.classList.add('cell-shake');
+          secondCell.classList.add('cell-shake');
+          
+          // 移除抖动动画并重置颜色
+          setTimeout(() => {
+            firstCell.classList.remove('bg-secondary', 'cell-shake');
+            secondCell.classList.remove('bg-secondary', 'cell-shake');
+            resetClicks();
+          }, 400);
+        }, 200);
+      }
+    }
+
+    // 重置点击状态
+    function resetClicks() {
+      gameState.firstClick = null;
+      gameState.secondClick = null;
+      gameState.isProcessing = false;
+    }
+
+    // 获取方格元素
+    function getCellElement(index) {
+      return gameBoard.children[index];
+    }
+
+    // 开始游戏
+    function startGame() {
+      if (!gameState.gameStarted) {
+        gameState.gameStarted = true;
+        gameState.startTime = Date.now();
+        
+        // 启动计时器
+        gameState.timerInterval = setInterval(updateTimer, 1000);
+        
+        // 更改按钮文本
+        startButton.innerHTML = '<i class="fa fa-refresh mr-2"></i> 重新开始';
+      } else {
+        // 重新开始游戏
+        initGame();
+        // 确保游戏状态为已开始
+        gameState.gameStarted = true;
+        gameState.startTime = Date.now();
+        
+        // 启动计时器
+        gameState.timerInterval = setInterval(updateTimer, 1000);
+      }
+    }
+
+    // 结束游戏
+    function endGame() {
+      // 停止计时器
+      if (gameState.timerInterval) {
+        clearInterval(gameState.timerInterval);
+        gameState.timerInterval = null;
+      }
+      
+      // 显示成功弹窗
+      finalTimeElement.textContent = timerElement.textContent;
+      finalMovesElement.textContent = gameState.moves;
+      successModal.classList.remove('hidden');
+    }
+
+    // 更新计时器
+    function updateTimer() {
+      if (!gameState.startTime) return;
+      
+      const elapsedTime = Math.floor((Date.now() - gameState.startTime) / 1000);
+      const minutes = Math.floor(elapsedTime / 60).toString().padStart(2, '0');
+      const seconds = (elapsedTime % 60).toString().padStart(2, '0');
+      
+      timerElement.textContent = `${minutes}:${seconds}`;
+    }
+
+    // 更新UI
+    function updateUI() {
+      // 更新步数
+      movesElement.textContent = gameState.moves;
+    }
+
+    // 事件监听
+    startButton.addEventListener('click', startGame);
+    playAgainButton.addEventListener('click', () => {
+      initGame();
+      startGame();
+    });
+
+    // 初始化音频
+    initAudio();
+    
+    // 初始化游戏
+    initGame();
+  </script>
+</body>
+</html>
+
